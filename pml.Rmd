@@ -1,0 +1,153 @@
+---
+title: "Practical Machine Learning Project"
+author: "lespejos"
+date: "September 24, 2015"
+output: html_document
+---
+
+#Summary
+Using wearable devices it is possible to record personal activity. The large amount of data recorded need to be analyzed to take full advantage of these devices. Machine learning algorithms can be used to perform these analysis. In this project, I used data from wearable accelerometers (on belt, forearm, arm, and dumbbell) in 6 participants. Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The goal of this project is to predict the manner in which they did the exercise by using machine learning. The results indicated that the Random Forest model correctly predict whether barbell lifts were performed correctly when weareable devices are used.
+
+
+#Data
+In this step, I will download the training and testing files and read the tables as objects in R.
+
+
+```{r, cache=TRUE }
+library(caret)
+if (!file.exists("PML.project")){
+    dir.create("PML.project")
+}
+#Download the files
+url.training <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url=url.training, destfile="./PML.project/pml-training.csv")
+url.testing <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url=url.testing, destfile="./PML.project/pml-testing.csv")
+downloadedate<-date()
+downloadedate
+
+#Read tables
+train <- read.csv("./PML.project/pml-training.csv", na.strings=c("NA","", "#DIV/0!"))
+test <- read.csv("./PML.project/pml-testing.csv", na.strings=c("NA","", "#DIV/0!"))
+#str(train)
+#str(test)
+```
+
+#Data cleaning
+In this step I cleaned the data set, leaving only variables that can be considered as predictors.
+I first deleted all the NAs observations. Then I deleted variables that are not associated to the objective of the project and cannot be as candidates for predictions. Finally I checked whether any of the remained variables have near zero variance. 
+
+
+```{r, cache=TRUE}
+
+#delete NAs from train and test files 
+NAcoltrain <- apply(train,2,function(x) {sum(is.na(x))}) 
+trainclean <- train[,which(NAcoltrain == 0)]
+
+NAcoltest <- apply(test,2,function(x) {sum(is.na(x))}) 
+testclean <- test[,which(NAcoltest == 0)]
+#str(trainclean)
+#str(testclean)
+
+#delete identification variables and variables that "SEEMED"" to be not related to the outcome:
+#(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window)
+#I could not find an explanation of these variables so I only left variables associated to belt, arm, dumbbell and forearm.
+trainclean <- trainclean[-c(1:7)]
+testclean <- testclean[-c(1:7)]
+
+#names(trainclean)
+#names(testclean)
+
+#Evaluate the presence of near zero variance of the variables
+traincleanNZV <- nearZeroVar(trainclean,saveMetrics=TRUE)
+sum(traincleanNZV$nzv==TRUE)
+testcleanNZV <- nearZeroVar(testclean,saveMetrics=TRUE)
+sum(testcleanNZV$nzv==TRUE)
+```
+
+
+None of the variables have near zero variance. All the remaining variables can be used and they can be considered predictors.
+
+#Divide the data set in training and testing files 
+In this step I divide the cleaned train data set into a training (50%) and testing (50%) sets. training will be used to train the model and testing will be used to evaluate the fit of the model. 
+
+
+```{r, cache=TRUE}
+inTrain <- createDataPartition(y = trainclean$classe, p=1/2, list=FALSE)
+training <- trainclean[inTrain,]
+testing <-trainclean[-inTrain,]
+dim(training); dim(testing)
+#str(training); str(testing)
+```
+
+# Plotting predictors
+In this step, I used the training set to visually evaluate the association of the variables with the classe variable.  
+  
+
+```{r, fig.height=15, fig.width=10, cache=TRUE}
+
+featurePlot(x = training[, 1:52],
+                  y=training[,53],
+                  plot = "box",
+                  ## Pass in options to bwplot() 
+                  scales=list(x=list(relation="free"), y=list(relation="free")),
+                  auto.key = list(columns = 5))
+
+```
+**Figure 1. Box-plot of predictors and classe variables**
+
+
+The visual evaluation of Figure 1  indicated that there are few variables with means (black dot) that are able to predict the classe "A" (activity performed correctly), however individually most of the variables were not able to differentiate correct from incorrect. 
+
+#Model training
+In this step, I used the training set to train the Random Forest model with 10-fold cross validation within the model.
+
+```{r, cache=TRUE}
+set.seed(1234)
+model <- train(classe~., method="rf", data=training)
+model
+model$finalModel
+
+```
+
+
+#Model testing, cross-validation
+In this step, I used the testing set to cross-validate the efficacy of the Random Forest model to correctly differentiate the different classe.
+
+
+```{r, cache=TRUE}
+
+predtest <- predict(model, testing)
+confusionMatrix(predtest, testing$classe)
+```
+
+The Random Forest model correctly differentiate the different classe with an accuracy of **98.8% (95% CI: 98.6- 99.0%)**. I think the model had a very good performance with an error rate of **1.16%**. 
+
+
+#Model predictions and submission file of predictions
+Finally I used the model to compute classe predictions based in a new set of data 
+
+```{r, cache=TRUE}
+# prediction of the test data set provided by the instructor.
+predictions <- predict(model, testclean)
+
+#code to create 20 single files to submmit the results.
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predictions)
+```
+
+##Conclusions
+The Random Forest model correctly predict the classe variable. These wearable devices may be useful to make sure that barbell lifts were performed correctly.
+
+
+##Reference
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th Augmented Human (AH) International Conference in cooperation with ACM SIGCHI (Augmented Human'13) . Stuttgart, Germany: ACM SIGCHI, 2013. 
+
+
+
